@@ -10,7 +10,9 @@ RUN useradd --create-home --uid 10001 robot
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
+COPY config ./config
 COPY examples ./examples
+COPY tests ./tests
 
 USER robot
 
