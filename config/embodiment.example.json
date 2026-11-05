@@ -1,0 +1,21 @@
+{
+  "_comment": "PLACEHOLDER embodiment. Replace every field once the real robot, sensors, controller, and limits are known. Not valid for hardware.",
+  "placeholder": true,
+  "embodiment_tag": "NEW_EMBODIMENT",
+  "control_hz": 30,
+  "action_horizon": 16,
+  "observation": {
+    "video": [
+      {"name": "front_camera", "height": 224, "width": 224, "channels": 3}
+    ],
+    "state": [
+      {"name": "arm_joint_positions", "dim": 6, "unit": "rad"},
+      {"name": "gripper_position", "dim": 1, "unit": "normalized"}
+    ],
+    "language": "task_description"
+  },
+  "action": [
+    {"name": "arm_joint_delta", "dim": 6, "unit": "rad", "low": -0.05, "high": 0.05},
+    {"name": "gripper_command", "dim": 1, "unit": "normalized", "low": 0.0, "high": 1.0}
+  ]
+}

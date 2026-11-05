@@ -3,6 +3,8 @@ import argparse
 import os
 import sys
 
+from embodiment_config import ConfigError, load_config, summarize
+
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
@@ -16,6 +18,11 @@ def parse_args() -> argparse.Namespace:
         default=int(os.getenv("GROOT_TIMEOUT_MS", "5000")),
     )
     parser.add_argument("--api-token", default=os.getenv("GROOT_API_TOKEN") or None)
+    parser.add_argument(
+        "--config",
+        default=os.getenv("GROOT_EMBODIMENT_CONFIG") or None,
+        help="Embodiment JSON to validate before connecting; no observations are sent.",
+    )
     parser.add_argument("--dry-run", action="store_true")
     return parser.parse_args()
 
@@ -29,6 +36,15 @@ def build_ping_request(api_token: str | None) -> dict[str, str]:
 
 def main() -> int:
     args = parse_args()
+    if args.config:
+        try:
+            config = load_config(args.config)
+        except ConfigError as error:
+            print(f"Invalid embodiment config: {error}", file=sys.stderr)
+            return 2
+        for line in summarize(config):
+            print(line)
+
     address = f"tcp://{args.host}:{args.port}"
     request = build_ping_request(args.api_token)
 

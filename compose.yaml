@@ -7,4 +7,10 @@ services:
       GROOT_PORT: ${GROOT_PORT:-5555}
       GROOT_TIMEOUT_MS: ${GROOT_TIMEOUT_MS:-5000}
       GROOT_API_TOKEN: ${GROOT_API_TOKEN:-}
+      GROOT_EMBODIMENT_CONFIG: ${GROOT_EMBODIMENT_CONFIG:-config/embodiment.example.json}
+
+  tests:
+    build:
+      context: .
+    entrypoint: ["python", "-m", "unittest", "discover", "-s", "tests", "-v"]
 
