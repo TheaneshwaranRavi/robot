@@ -33,6 +33,14 @@ docker compose run --rm groot-client --dry-run
 
 The default `GROOT_HOST=host.docker.internal` reaches a server exposed by the host. To use a remote Linux GPU machine, set `GROOT_HOST` in `.env` to its private hostname or IP and restrict TCP port `5555` to trusted clients.
 
+The dry run also validates the embodiment config (see below) and prints its observation and action shapes.
+
+Run the smoke tests. They start a fake in-process policy server, so no GPU, GR00T server, or robot is needed:
+
+```bash
+docker compose run --rm tests
+```
+
 Run the live health check:
 
 ```bash
@@ -57,6 +65,14 @@ uv run python gr00t/eval/run_gr00t_server.py \
 ```
 
 `NEW_EMBODIMENT` is only a scaffold value. Do not request actions or connect a robot until its observation schema, action space, controller limits, calibration, watchdogs, and emergency-stop behavior are defined.
+
+## Embodiment Config
+
+[`config/embodiment.example.json`](config/embodiment.example.json) declares the observation shapes (cameras, state vectors, language key), action vectors with per-dimension limits, control rate, and action horizon. Every value is a **placeholder** (`"placeholder": true`) and must be replaced with the real robot's data before any use beyond this client. Point `GROOT_EMBODIMENT_CONFIG` at a different file to validate it. The client only validates and summarizes the config; it never sends observations or requests actions.
+
+## Dependencies
+
+`requirements.txt` lists only portable, pinned client dependencies that run on macOS and Linux without CUDA. NVIDIA packages (GR00T, Isaac Lab, PyTorch/CUDA) are never added to it; they live in NVIDIA's official containers or environments on the GPU host.
 
 ## Isaac Lab and SimReady
 
