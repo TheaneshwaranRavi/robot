@@ -1,0 +1,12 @@
+# Phase 3 vision stack (CPU only). Install into a separate env so the light sim/test env stays small:
+#   python3.12 -m venv .venv-vision && .venv-vision/bin/pip install -r requirements-phase3.txt
+# Versions are the ones the milestone-1 smoke test ran with on macOS arm64. numpy is left to the
+# resolver: anomalib's dependency set selected numpy 2.4.x, which conflicts with the sim pin 2.5.4.
+anomalib[openvino]==2.7.0
+openvino==2026.4.1
+torch==2.15.0
+torchvision==0.29.2
+mujoco==4.0.0
+Pillow==13.0.0
+msgpack==1.1.0
+pyzmq==27.0.1

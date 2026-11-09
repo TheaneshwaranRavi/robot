@@ -342,3 +342,29 @@ Critical path: 0 → 1 → 2 → 3 → 4 → 5 → 6 → 7. Milestone 8 starts o
 | Where does training run? | Apple Silicon CPU if milestone 1 passes. The fallback environment is **TO VERIFY**. |
 | Must Physical AI Studio be in the live path? | No by default. Its event requirement and integration point are **TO VERIFY**. |
 | What are the success gates? | Set and record them after classical and OpenVINO baselines. Do not invent numbers. |
+
+## 11. Progress log
+
+### 2026-11-09: milestones 0 and 1
+
+Milestone 0 (contracts):
+- **Contracts:** `phase3/contracts.py` holds typed, validated dataclasses for camera frames, part observations, inspection results, robot state and commands, safety results and cell events.
+- **Interfaces and fakes:** `phase3/interfaces.py` defines the camera, detector and robot interfaces. `phase3/fakes.py` provides deterministic test versions of each.
+- **Controller:** `phase3/controller.py` is a pure state machine covering every state in section 3.4.
+- **Config:** `phase3/config/phase3.sim.json` and `phase3/config.py` give strict validation.
+- **Tests:** 37 tests.
+
+Milestone 1 (platform spike):
+- **SO-101 model:** `python -m phase3.tools.fetch_so101` fetches Menagerie `robotstudio_so101` at a pinned commit into a gitignored folder, with a SHA-256 manifest.
+- **Cell:** `phase3/scene.py` builds the cell with MjSpec: table, inspection pad, GOOD and REJECT bins, a free part, an overhead camera and a cell camera. `tests/test_phase3_scene.py` checks the exact joint and actuator mapping, finite physics, the render, and reach.
+- **Home pose:** a folded "camera clear" pose was found by grid search. No arm link reaches past x = 0.07 m and there are no self-contacts.
+- **Tool-down reach (finding):** with the fingers vertical, the arm reaches about 0.09 m above the pad and about 0.07 m above the bins. Approach and transit above those heights must not require a vertical tool. `phase3/kinematics.py` gives damped-least-squares IK with a tool-down constraint.
+- **Anomalib + OpenVINO on macOS arm64 (resolves the milestone-1 TO VERIFY):** `.venv-vision/bin/python -m phase3.tools.anomalib_smoke` ran the whole chain: render, train PatchCore (ResNet-18, CPU), export to OpenVINO, CPU inference.
+  - Timings: training on 40 good crops took about 40 s, and the export took about 7 s.
+  - This is a tiny, easy smoke set, so its scores are not a result.
+- **Export quirk (finding):** Anomalib 2.7's export fixes the IR batch at 2 (`[2,3,?,?]`), and reshaping it to batch 1 fails in an Interpolate node. The smoke test therefore pads one image to batch 2. This roughly doubles the inference cost; measured CPU latency was about 250 ms median, about 810 ms p95. Milestone 3 must fix the export (a batch-1 trace or a direct `openvino.convert_model`) before latency is reported.
+- **Dependencies:** `requirements-phase3.txt` pins the vision stack. numpy is left to the resolver because Anomalib selects 2.4.x, while the sim environment pins 2.5.4.
+
+Still open:
+- The vision stack inside the Linux arm64 Docker image is not tested yet.
+- A real-camera or hardware backend is not started (milestone 6).

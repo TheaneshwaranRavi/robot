@@ -1,0 +1,42 @@
+{
+  "schema_version": 1,
+  "target": "sim",
+  "joint_names": [
+    "shoulder_pan",
+    "shoulder_lift",
+    "elbow_flex",
+    "wrist_flex",
+    "wrist_roll",
+    "gripper"
+  ],
+  "joint_limits": {
+    "shoulder_pan": {"low": -1.91986, "high": 1.91986},
+    "shoulder_lift": {"low": -1.74533, "high": 1.74533},
+    "elbow_flex": {"low": -1.69, "high": 1.69},
+    "wrist_flex": {"low": -1.65806, "high": 1.65806},
+    "wrist_roll": {"low": -2.74385, "high": 2.84121},
+    "gripper": {"low": -0.17453, "high": 1.74533}
+  },
+  "max_joint_step_rad": 0.1,
+  "timeouts_s": {
+    "BOOT": 1.0,
+    "HOME": 5.0,
+    "WAIT_PART": null,
+    "CAPTURE": 1.0,
+    "LOCALISE": 1.0,
+    "INSPECT": 2.0,
+    "DECIDE": 1.0,
+    "PICK": 5.0,
+    "VERIFY_GRASP": 1.0,
+    "PLACE_GOOD": 5.0,
+    "PLACE_REJECT": 5.0,
+    "VERIFY_DROP": 1.0,
+    "RECORD": 1.0,
+    "RECOVER": 5.0,
+    "SAFE_STOP": null
+  },
+  "bins": {
+    "good": "GOOD",
+    "reject": "REJECT"
+  }
+}
