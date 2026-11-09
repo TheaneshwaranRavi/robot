@@ -1,0 +1,28 @@
+FROM python:3.12-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    MUJOCO_GL=osmesa \
+    PYOPENGL_PLATFORM=osmesa
+
+# OSMesa gives MuJoCo software offscreen rendering without a GPU; ffmpeg writes mp4 recordings.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends libosmesa6 libgl1 ffmpeg \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /workspace
+
+RUN useradd --create-home --uid 10001 robot
+
+COPY requirements.txt requirements-sim.txt ./
+RUN pip install --no-cache-dir -r requirements-sim.txt
+
+COPY config ./config
+COPY examples ./examples
+COPY sim ./sim
+COPY tests ./tests
+
+RUN mkdir -p outputs && chown robot:robot outputs
+USER robot
+
+ENTRYPOINT ["python", "-m", "sim.run"]

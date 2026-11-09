@@ -1,0 +1,130 @@
+<!--
+  Virtual robot scene: generic 6-DoF arm with a parallel-jaw gripper, a table and one cube.
+  Primitive geometry only (no meshes), written for this repository. Joint ranges must match
+  config/embodiment.sim.json; SimEnv checks this when it loads.
+  Units: metres, radians, kilograms. World z is up; the table top is z = 0.
+-->
+<mujoco model="sim_arm_6dof">
+  <compiler angle="radian" autolimits="true"/>
+  <option timestep="0.002" integrator="implicitfast" cone="elliptic" impratio="10"/>
+
+  <visual>
+    <headlight ambient="0.35 0.35 0.35" diffuse="0.5 0.5 0.5" specular="0.1 0.1 0.1"/>
+    <global offwidth="1280" offheight="960"/>
+    <quality shadowsize="2048"/>
+  </visual>
+
+  <asset>
+    <texture name="sky" type="skybox" builtin="gradient" rgb1="0.55 0.65 0.8" rgb2="0.15 0.18 0.25"
+             width="256" height="256"/>
+    <texture name="wood" type="2d" builtin="checker" rgb1="0.62 0.5 0.38" rgb2="0.58 0.46 0.35"
+             width="256" height="256" mark="none"/>
+    <material name="table" texture="wood" texrepeat="6 6" reflectance="0.05"/>
+    <material name="floor" rgba="0.25 0.26 0.28 1"/>
+    <material name="arm" rgba="0.82 0.84 0.88 1" specular="0.4" shininess="0.4"/>
+    <material name="joint" rgba="0.22 0.24 0.3 1"/>
+    <material name="finger" rgba="0.15 0.15 0.18 1"/>
+    <material name="cube" rgba="0.85 0.12 0.1 1"/>
+  </asset>
+
+  <default>
+    <default class="arm">
+      <joint damping="2" armature="0.05" frictionloss="0.05"/>
+      <geom type="capsule" material="arm" contype="1" conaffinity="1" density="800"/>
+      <position kp="400" dampratio="1" forcerange="-80 80"/>
+      <default class="wrist">
+        <joint damping="0.5" armature="0.01"/>
+        <position kp="120" dampratio="1" forcerange="-20 20"/>
+      </default>
+    </default>
+    <default class="finger">
+      <joint type="slide" axis="1 0 0" range="0 0.03" damping="2" armature="0.01"/>
+      <geom type="box" material="finger" friction="1.5 0.01 0.0002" condim="4" solref="0.004 1"
+            density="1200"/>
+    </default>
+  </default>
+
+  <worldbody>
+    <light name="key" pos="0.6 -0.8 1.6" dir="-0.3 0.5 -1" diffuse="0.7 0.7 0.7" castshadow="true"/>
+    <geom name="floor" type="plane" pos="0 0 -0.75" size="3 3 0.1" material="floor"/>
+    <geom name="table" type="box" pos="0.3 0 -0.02" size="0.6 0.55 0.02" material="table"
+          friction="1 0.005 0.0001"/>
+    <body name="look_at" pos="0.32 0 0.2"/>
+    <camera name="front_camera" pos="1.2 -0.5 0.75" mode="targetbody" target="look_at" fovy="50"/>
+
+    <!-- The cube comes first so its free joint owns qpos[0:7] and dof[0:6]. -->
+    <body name="cube" pos="0.45 0 0.025">
+      <freejoint name="cube_free"/>
+      <geom name="cube" type="box" size="0.025 0.025 0.025" material="cube" mass="0.05"
+            friction="1.5 0.01 0.0002" condim="4"/>
+    </body>
+
+    <body name="base" childclass="arm">
+      <geom name="base" type="cylinder" size="0.07 0.05" pos="0 0 0.05" material="joint"/>
+      <body name="link1" pos="0 0 0.1" gravcomp="1">
+        <joint name="j1_base_yaw" axis="0 0 1" range="-2.6 2.6"/>
+        <geom fromto="0 0 0 0 0 0.05" size="0.05"/>
+        <body name="link2" pos="0 0 0.05" gravcomp="1">
+          <joint name="j2_shoulder" axis="0 1 0" range="-1.5 1.8"/>
+          <geom type="sphere" size="0.055" material="joint"/>
+          <geom fromto="0 0 0 0 0 0.3" size="0.04"/>
+          <body name="link3" pos="0 0 0.3" gravcomp="1">
+            <joint name="j3_elbow" axis="0 1 0" range="-0.2 2.6"/>
+            <geom type="sphere" size="0.045" material="joint"/>
+            <geom fromto="0 0 0 0 0 0.25" size="0.035"/>
+            <body name="link4" pos="0 0 0.25" gravcomp="1">
+              <joint name="j4_forearm_roll" class="wrist" axis="0 0 1" range="-2.6 2.6"/>
+              <geom fromto="0 0 0 0 0 0.05" size="0.032"/>
+              <body name="link5" pos="0 0 0.05" gravcomp="1">
+                <joint name="j5_wrist_pitch" class="wrist" axis="0 1 0" range="-0.2 2.4"/>
+                <geom type="sphere" size="0.034" material="joint"/>
+                <geom fromto="0 0 0 0 0 0.06" size="0.028"/>
+                <body name="link6" pos="0 0 0.06" gravcomp="1">
+                  <joint name="j6_tool_roll" class="wrist" axis="0 0 1" range="-3.0 3.0"/>
+                  <geom name="palm" type="box" size="0.065 0.025 0.012" pos="0 0 0.012"
+                        material="joint"/>
+                  <site name="tcp" pos="0 0 0.085" size="0.006" rgba="0 1 0 0.6" group="3"/>
+                  <body name="finger_left" pos="0.05 0 0.024" gravcomp="1">
+                    <joint name="finger_left" class="finger" axis="-1 0 0"/>
+                    <geom name="finger_left" class="finger" size="0.008 0.018 0.04" pos="0 0 0.04"/>
+                  </body>
+                  <body name="finger_right" pos="-0.05 0 0.024" gravcomp="1">
+                    <joint name="finger_right" class="finger" axis="1 0 0"/>
+                    <geom name="finger_right" class="finger" size="0.008 0.018 0.04" pos="0 0 0.04"/>
+                  </body>
+                </body>
+              </body>
+            </body>
+          </body>
+        </body>
+      </body>
+    </body>
+  </worldbody>
+
+  <contact>
+    <!-- Neighbouring links overlap at the joints by design; only non-adjacent links collide. -->
+    <exclude body1="base" body2="link1"/>
+    <exclude body1="base" body2="link2"/>
+    <exclude body1="link3" body2="link5"/>
+    <exclude body1="link4" body2="link6"/>
+    <exclude body1="link6" body2="finger_left"/>
+    <exclude body1="link6" body2="finger_right"/>
+  </contact>
+
+  <equality>
+    <!-- Fingers move together: one command closes both jaws symmetrically. -->
+    <joint joint1="finger_right" joint2="finger_left" polycoef="0 1 0 0 0" solref="0.005 1"/>
+  </equality>
+
+  <actuator>
+    <position name="a1" class="arm" joint="j1_base_yaw" ctrlrange="-2.6 2.6"/>
+    <position name="a2" class="arm" joint="j2_shoulder" ctrlrange="-1.5 1.8"/>
+    <position name="a3" class="arm" joint="j3_elbow" ctrlrange="-0.2 2.6"/>
+    <position name="a4" class="wrist" joint="j4_forearm_roll" ctrlrange="-2.6 2.6"/>
+    <position name="a5" class="wrist" joint="j5_wrist_pitch" ctrlrange="-0.2 2.4"/>
+    <position name="a6" class="wrist" joint="j6_tool_roll" ctrlrange="-3.0 3.0"/>
+    <!-- Force-limited so a closed gripper squeezes the cube instead of crushing through it. -->
+    <position name="gripper" joint="finger_left" kp="600" dampratio="1" ctrlrange="0 0.03"
+              forcerange="-12 12"/>
+  </actuator>
+</mujoco>

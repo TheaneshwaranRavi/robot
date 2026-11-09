@@ -14,3 +14,21 @@ services:
       context: .
     entrypoint: ["python", "-m", "unittest", "discover", "-s", "tests", "-v"]
 
+
+  sim:
+    build:
+      context: .
+      dockerfile: Dockerfile.sim
+    environment:
+      GROOT_HOST: ${GROOT_HOST:-host.docker.internal}
+      GROOT_PORT: ${GROOT_PORT:-5555}
+      GROOT_TIMEOUT_MS: ${GROOT_TIMEOUT_MS:-5000}
+      GROOT_API_TOKEN: ${GROOT_API_TOKEN:-}
+    volumes:
+      - ./outputs:/workspace/outputs
+
+  sim-tests:
+    build:
+      context: .
+      dockerfile: Dockerfile.sim
+    entrypoint: ["python", "-m", "unittest", "discover", "-s", "tests", "-v"]

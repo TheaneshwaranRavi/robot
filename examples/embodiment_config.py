@@ -74,7 +74,42 @@ def validate_config(config: Any) -> dict[str, Any]:
         if low >= high:
             raise ConfigError(f"action {name!r} low must be less than high")
 
+    # Optional. A missing target means "hardware", so existing configs keep their meaning.
+    target = config.get("target", "hardware")
+    if target not in TARGETS:
+        raise ConfigError(f"target must be one of {sorted(TARGETS)}, got {target!r}")
+
+    joint_limits = config.get("joint_limits")
+    if joint_limits is not None:
+        _validate_joint_limits(joint_limits, observation["state"])
+
     return config
+
+
+TARGETS = {"sim", "hardware"}
+
+
+def _finite_number(value: Any) -> bool:
+    return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
+
+
+def _validate_joint_limits(joint_limits: Any, states: list[dict[str, Any]]) -> None:
+    if not isinstance(joint_limits, dict) or not joint_limits:
+        raise ConfigError("joint_limits must be a non-empty object keyed by state name")
+    dims = {state["name"]: state["dim"] for state in states}
+    for name, limits in joint_limits.items():
+        if name not in dims:
+            raise ConfigError(f"joint_limits key {name!r} is not an observation.state name")
+        if not isinstance(limits, dict):
+            raise ConfigError(f"joint_limits.{name} must be an object with low and high")
+        low, high = limits.get("low"), limits.get("high")
+        for bound, label in ((low, "low"), (high, "high")):
+            if not isinstance(bound, list) or len(bound) != dims[name]:
+                raise ConfigError(f"joint_limits.{name}.{label} must list {dims[name]} numbers")
+            if not all(_finite_number(value) for value in bound):
+                raise ConfigError(f"joint_limits.{name}.{label} must be finite numbers")
+        if any(lo >= hi for lo, hi in zip(low, high)):
+            raise ConfigError(f"joint_limits.{name} low must be less than high in every dimension")
 
 
 def load_config(path: str | Path) -> dict[str, Any]:
@@ -100,4 +135,6 @@ def summarize(config: dict[str, Any]) -> list[str]:
     ]
     if config["placeholder"]:
         lines.append("WARNING: placeholder embodiment; not valid for hardware")
+    if config.get("target", "hardware") == "sim":
+        lines.append("Target: simulation only; never use with hardware")
     return lines

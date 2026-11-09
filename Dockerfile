@@ -12,6 +12,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY config ./config
 COPY examples ./examples
+COPY sim ./sim
 COPY tests ./tests
 
 USER robot

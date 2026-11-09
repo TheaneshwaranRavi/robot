@@ -1,0 +1,28 @@
+{
+  "_comment": "Simulated 6-DoF arm + parallel gripper from sim/assets/arm_table.xml. Real values for the virtual robot only; target=sim keeps it away from hardware.",
+  "placeholder": false,
+  "target": "sim",
+  "embodiment_tag": "NEW_EMBODIMENT",
+  "control_hz": 30,
+  "action_horizon": 16,
+  "observation": {
+    "video": [
+      {"name": "front_camera", "height": 224, "width": 224, "channels": 3}
+    ],
+    "state": [
+      {"name": "arm_joint_positions", "dim": 6, "unit": "rad"},
+      {"name": "gripper_position", "dim": 1, "unit": "normalized"}
+    ],
+    "language": "task_description"
+  },
+  "action": [
+    {"name": "arm_joint_delta", "dim": 6, "unit": "rad", "low": -0.05, "high": 0.05},
+    {"name": "gripper_command", "dim": 1, "unit": "normalized", "low": 0.0, "high": 1.0}
+  ],
+  "joint_limits": {
+    "arm_joint_positions": {
+      "low": [-2.6, -1.5, -0.2, -2.6, -0.2, -3.0],
+      "high": [2.6, 1.8, 2.6, 2.6, 2.4, 3.0]
+    }
+  }
+}

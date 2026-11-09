@@ -1,0 +1,5 @@
+# Simulation-only dependencies (CPU, macOS + Linux arm64/x86_64). Never add CUDA packages here.
+-r requirements.txt
+mujoco==4.0.0
+numpy==2.5.4
+Pillow==13.0.0
