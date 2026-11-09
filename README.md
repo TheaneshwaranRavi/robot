@@ -116,6 +116,41 @@ Every action passes through `sim/safety.py` before it reaches the robot:
 - The `groot` backend refuses a config with `"placeholder": true`.
 - A config with `"target": "sim"` is refused by hardware runners, so a sim config cannot drive a real robot.
 
+## Factory-cell co-simulation
+
+![Co-simulation, 6x speed: 3D MuJoCo view on the left, live dashboard on the right](docs/media/factory_cell_cosim.gif)
+
+Full-quality video: [docs/media/factory_cell_cosim.mp4](docs/media/factory_cell_cosim.mp4)
+
+A 12 × 8 m factory cell in which a mobile robot (AMR) and a fixed 6-DoF arm work together. Each cycle, the AMR drives to the LOAD station next to the arm, the arm places a crate on its deck, the AMR carries it to DROP and then returns HOME. It runs on CPU only.
+
+The cell is split into separate processes that talk only through messages (ZeroMQ PUB/SUB with msgpack), the way a real cell's simulator, robot software and PLC would:
+
+| Process | Role |
+| --- | --- |
+| `cosim/world_sim.py` | MuJoCo physics for the cell, the arm and the AMR. Publishes the sim clock, a simulated 270° lidar and noisy, miscalibrated wheel odometry, and records the 3D view. |
+| `cosim/navigator.py` | The AMR's own software. It sees only lidar and odometry, never the true pose: a particle filter localises it on the map, A* plans on an inflated occupancy grid and pure pursuit follows the path. |
+| `cosim/cell.py` | The cell controller. A mission state machine that dispatches AMR goals and plays the arm through taught joint positions with trapezoidal moves. |
+| `cosim/dashboard.py` | A top-down map with true and estimated pose, lidar hits, the planned path, the mission state and the arm joints. |
+
+The geometry, stations and sensors all come from one file, [`cosim/layout.json`](cosim/layout.json). The arm's teach points in it are computed offline by `python -m cosim.tools.teach`, which solves the arm's inverse kinematics and refuses points the arm cannot reach. [`cosim/protocol.py`](cosim/protocol.py) lists every topic and its message fields, and [`cosim/CONTRACT.md`](cosim/CONTRACT.md) is the build contract each process was written against.
+
+Run one cycle as fast as possible and record the videos:
+
+```bash
+python -m cosim.launch --cycles 1 --rtf 0 --record outputs/cosim
+```
+
+This writes `overview.mp4`, `dashboard.mp4`, a side-by-side `demo.mp4` and a log for each process. Use `--rtf 1` to run in real time, `--no-dashboard` to skip the dashboard and `--timeout` to set a wall-clock limit. The exit code is 0 when every cycle finished.
+
+In the recorded run, one cycle takes about 67 s of sim time. The navigator's pose estimate stays within a few centimetres of the truth, and the AMR docks within about 3 cm and 2°.
+
+Known limitations:
+
+- The 0.25 m emergency-stop distance is measured from the AMR's centre, not its bumper, so in practice it only triggers at contact.
+- The particle filter has no global relocalisation; it needs a roughly known start pose.
+- The dashboard draws the arm as a base marker and joint bars, not a full kinematic view.
+
 ## GPU Host: GR00T N1.7
 
 Run the server on a supported Ubuntu/NVIDIA machine using the official [NVIDIA/Isaac-GR00T](https://github.com/NVIDIA/Isaac-GR00T) instructions. GR00T N1.7 requires Python 3.12 and an NVIDIA GPU with at least 16 GB VRAM for inference. Fine-tuning requires at least 40 GB VRAM. NVIDIA provides platform-specific Dockerfiles under `scripts/deployment/`; use those rather than extending this lightweight client image with CUDA packages.
