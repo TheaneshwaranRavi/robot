@@ -368,3 +368,16 @@ Milestone 1 (platform spike):
 Still open:
 - The vision stack inside the Linux arm64 Docker image is not tested yet.
 - A real-camera or hardware backend is not started (milestone 6).
+
+### 2026-11-09: milestone 2 (synthetic data)
+
+- **Part family "plate":** a 40 × 30 × 15 mm plate with two 8 mm drilled holes, defined in `phase3/scene.py`. The holes and up to three scratch marks are visual-only geoms on the top face.
+- **Inspection camera:** a close-up `inspect` camera sits 0.30 m above the pad. It gives about 0.6 mm per pixel at 256 × 256, so a hole is about 13 px across.
+- **Defects** (`phase3/dataset.py`): `missing_hole`, `scratch` (1–3 dark or bright marks, 0.8–1.6 mm wide), `wrong_colour` (from an off-spec palette), and `deformed_size` (one axis scaled 0.70–0.88 or 1.12–1.30). Good parts vary within tolerance: colour ±0.025, size ±1 %, hole radius ±4 %.
+- **Masks:** each mask comes from MuJoCo geom segmentation. A missing hole's mask is the area where the hole should be; a colour or size defect's mask covers the whole part.
+- **Randomisation:** part pose and yaw, light gain and position, camera pose and FOV, table and pad colour, exposure, blur, and noise. The `shift` split uses wider, unseen ranges.
+- **Splits:** train 300 (good only); val 120, test 200 and shift 120 (half good, the rest split evenly across the four defects). Every sample has its own seed stream, `SeedSequence([seed, split, index])`, so no two samples share a seed.
+- **Ground truth:** every sample is checked against its render. For example, a nominal part must show both holes, a missing hole must not be drawn, and a scratch must be visible. The default build (740 images, about 30 s on CPU) reported zero ground-truth problems.
+- **Determinism:** the same seed reproduces identical PNGs and an identical manifest SHA-256 (tested).
+- **Rendering finding:** MuJoCo's default specular highlight washed the blue part out to cyan, which hid colour defects. A matte material plus dimmer lights fixed it: the nominal part now renders at about RGB (66, 106, 158).
+- **Smoke test:** the Anomalib smoke test now uses this generator.

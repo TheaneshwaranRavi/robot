@@ -26,6 +26,7 @@ ARM_JOINTS = ("shoulder_pan", "shoulder_lift", "elbow_flex", "wrist_flex", "wris
 GRIPPER_JOINT = "gripper"
 ALL_JOINTS = ARM_JOINTS + (GRIPPER_JOINT,)
 TOOL_SITE = "gripperframe"
+MATTE = "cell_matte"
 
 # Cell layout (metres, robot base frame = world frame).
 TABLE_SIZE = (0.70, 0.70)            # full x, y extent of the table top
@@ -34,8 +35,14 @@ INSPECT_PAD = (0.22, 0.0)            # where parts are presented to the camera a
 BIN_POSITIONS = {"GOOD": (0.12, 0.22), "REJECT": (0.12, -0.22)}
 BIN_INNER = 0.10                     # inner width of a square bin
 BIN_WALL_H = 0.04
-PART_SIZE = (0.03, 0.03, 0.02)       # full extent of the default part (box)
+PART_SIZE = (0.04, 0.03, 0.015)      # nominal plate: full x, y, z extent (graspable across y)
+PART_RGBA = (0.30, 0.52, 0.80, 1.0)  # nominal anodised-blue finish
+HOLE_X = (-0.011, 0.011)             # nominal hole centres along the plate's x axis
+HOLE_RADIUS = 0.004
+HOLE_RGBA = (0.04, 0.04, 0.05, 1.0)
+N_SCRATCH_SLOTS = 3                  # hidden scratch geoms the defect generator may switch on
 OVERHEAD_CAM = {"pos": (0.22, 0.0, 0.55), "fovy": 45.0}
+INSPECT_CAM = {"pos": (0.22, 0.0, 0.30), "fovy": 30.0}  # ~0.6 mm/pixel at 256 x 256
 # Folded "camera clear" pose: no arm link reaches past x = 0.07 m, links stay >= 6 cm above the
 # table and there are no self-contacts (found by a grid search in the milestone-1 spike).
 HOME_POSE = {"shoulder_pan": 0.0, "shoulder_lift": -1.70, "elbow_flex": -1.65, "wrist_flex": 0.20,
@@ -89,13 +96,28 @@ class SortCell:
         for _ in range(max(1, round(seconds / self.model.opt.timestep))):
             mujoco.mj_step(self.model, self.data)
 
-    def render(self, camera: str = "overhead", width: int = 640, height: int = 480) -> np.ndarray:
-        key = (height, width)
+    def _renderer(self, height: int, width: int, segmentation: bool) -> mujoco.Renderer:
+        key = (height, width, segmentation)
         if key not in self._renderers:
-            self._renderers[key] = mujoco.Renderer(self.model, height=height, width=width)
-        renderer = self._renderers[key]
+            renderer = mujoco.Renderer(self.model, height=height, width=width)
+            if segmentation:
+                renderer.enable_segmentation_rendering()
+            self._renderers[key] = renderer
+        return self._renderers[key]
+
+    def render(self, camera: str = "overhead", width: int = 640, height: int = 480) -> np.ndarray:
+        renderer = self._renderer(height, width, False)
         renderer.update_scene(self.data, camera=camera)
         return renderer.render().copy()
+
+    def render_geom_ids(self, camera: str = "overhead", width: int = 640, height: int = 480) -> np.ndarray:
+        """Per-pixel geom id (int32, -1 = background). Invisible (alpha 0) geoms are not drawn."""
+        renderer = self._renderer(height, width, True)
+        renderer.update_scene(self.data, camera=camera)
+        seg = renderer.render()
+        ids = seg[..., 0].astype(np.int32)
+        ids[seg[..., 1] != int(mujoco.mjtObj.mjOBJ_GEOM)] = -1
+        return ids
 
     def close(self) -> None:
         for renderer in self._renderers.values():
@@ -106,7 +128,7 @@ class SortCell:
 def _box(parent, name: str, size, pos, rgba, contact: bool = True, **kw):
     return parent.add_geom(name=name, type=mujoco.mjtGeom.mjGEOM_BOX, size=[s / 2 for s in size],
                            pos=list(pos), rgba=list(rgba), contype=1 if contact else 0,
-                           conaffinity=1 if contact else 0, **kw)
+                           conaffinity=1 if contact else 0, material=MATTE, **kw)
 
 
 def build_spec(model_path: Path = MODEL_PATH) -> mujoco.MjSpec:
@@ -117,10 +139,15 @@ def build_spec(model_path: Path = MODEL_PATH) -> mujoco.MjSpec:
     spec.visual.global_.offwidth = 1280
     spec.visual.global_.offheight = 960
     world = spec.worldbody
+    # Matte material for everything we add: MuJoCo's default specular term washes colours out
+    # under the inspection camera, which would hide colour defects. Geom rgba still sets colour.
+    spec.add_material(name=MATTE, specular=0.05, shininess=0.1, reflectance=0.0)
+    spec.visual.headlight.diffuse = [0.2, 0.2, 0.2]
+    spec.visual.headlight.ambient = [0.12, 0.12, 0.12]
 
-    world.add_light(name="key", pos=[0.3, -0.4, 1.2], dir=[-0.2, 0.3, -1.0], diffuse=[0.55, 0.55, 0.55],
+    world.add_light(name="key", pos=[0.3, -0.4, 1.2], dir=[-0.2, 0.3, -1.0], diffuse=[0.35, 0.35, 0.35],
                     castshadow=True)
-    world.add_light(name="fill", pos=[-0.3, 0.4, 1.0], dir=[0.3, -0.3, -1.0], diffuse=[0.35, 0.35, 0.35],
+    world.add_light(name="fill", pos=[-0.3, 0.4, 1.0], dir=[0.3, -0.3, -1.0], diffuse=[0.15, 0.15, 0.15],
                     castshadow=False)
 
     # Table top surface at z = 0 (the robot base stands on it).
@@ -139,17 +166,27 @@ def build_spec(model_path: Path = MODEL_PATH) -> mujoco.MjSpec:
             _box(bin_body, f"bin_{name}_wall{i}", (sx, sy, h),
                  (dx * (w + t) / 2, dy * (w + t) / 2, h / 2), colours[name])
 
+    # Part family "plate": a rectangular plate with two drilled holes along its long (x) axis.
+    # Holes and surface scratches are visual-only geoms on the top face so the defect generator
+    # can show/hide/resize them per sample; the plate box is the only collision geom.
     part = world.add_body(name="part", pos=[INSPECT_PAD[0], INSPECT_PAD[1], PART_SIZE[2] / 2])
     part.add_freejoint(name="part_free")
-    _box(part, "part_geom", PART_SIZE, (0, 0, 0), (0.30, 0.52, 0.80, 1), mass=0.02,
-         friction=[1.2, 0.01, 0.001])
-    # Visual-only feature used by the defect generator: a dark "hole" on the top face.
-    # Hidden (alpha 0) on a nominal part. Milestone 2 replaces this with the parametric part family.
-    part.add_geom(name="part_hole", type=mujoco.mjtGeom.mjGEOM_CYLINDER, size=[0.005, 0.0006, 0],
-                  pos=[0, 0, PART_SIZE[2] / 2], rgba=[0.05, 0.05, 0.06, 0], contype=0, conaffinity=0,
-                  mass=0)
+    _box(part, "part_geom", PART_SIZE, (0, 0, 0), PART_RGBA, mass=0.02, friction=[1.2, 0.01, 0.001])
+    top = PART_SIZE[2] / 2
+    for i, hx in enumerate(HOLE_X):
+        part.add_geom(name=f"part_hole_{i}", type=mujoco.mjtGeom.mjGEOM_CYLINDER,
+                      size=[HOLE_RADIUS, 0.0004, 0], pos=[hx, 0, top], rgba=list(HOLE_RGBA),
+                      contype=0, conaffinity=0, mass=0, material=MATTE)
+    for i in range(N_SCRATCH_SLOTS):
+        part.add_geom(name=f"part_scratch_{i}", type=mujoco.mjtGeom.mjGEOM_BOX,
+                      size=[0.008, 0.0004, 0.0003], pos=[0, 0, top + 0.0001], rgba=[0.1, 0.1, 0.1, 0],
+                      contype=0, conaffinity=0, mass=0, material=MATTE)
 
     cx, cy, cz = OVERHEAD_CAM["pos"]
+    # Close-up inspection camera straight above the pad (same orientation as the overhead one).
+    ix, iy, iz = INSPECT_CAM["pos"]
+    world.add_camera(name="inspect", pos=[ix, iy, iz], quat=[0.7071068, 0.0, 0.0, 0.7071068],
+                     fovy=INSPECT_CAM["fovy"])
     # Looking straight down; image x along world -y, image up along world +x.
     world.add_camera(name="overhead", pos=[cx, cy, cz], quat=[0.7071068, 0.0, 0.0, 0.7071068],
                      fovy=OVERHEAD_CAM["fovy"])
@@ -181,5 +218,5 @@ def build_cell(model_path: Path = MODEL_PATH) -> SortCell:
     return cell
 
 
-__all__ = ["ALL_JOINTS", "ARM_JOINTS", "BIN_POSITIONS", "GRIPPER_JOINT", "HOME_POSE", "INSPECT_PAD",
+__all__ = ["ALL_JOINTS", "ARM_JOINTS", "BIN_POSITIONS", "GRIPPER_JOINT", "HOLE_RADIUS", "HOLE_X", "HOME_POSE", "INSPECT_CAM", "INSPECT_PAD", "N_SCRATCH_SLOTS", "PART_RGBA",
            "PART_SIZE", "SortCell", "TOOL_DOWN_MAX_Z", "build_cell", "build_spec"]

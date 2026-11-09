@@ -5,8 +5,8 @@ this machine (Apple Silicon, macOS arm64)? It is NOT a benchmark: the dataset is
 defects are deliberately obvious. Numbers it prints are a sanity check, not a result.
 
 Steps
-  1. Render overhead crops of the part on the inspection pad from the MuJoCo cell:
-     good parts (pose jitter) and three defect types (wrong colour, oversize, extra hole).
+  1. Render inspection-camera images with the milestone-2 generator (phase3.dataset):
+     good parts and three defect types (wrong colour, deformed size, missing hole).
   2. Train PatchCore (ResNet-18 backbone, CPU) on good images only.
   3. Export to OpenVINO IR and score every test image with the OpenVINO inferencer.
   4. Write outputs/phase3/anomalib_smoke/report.json.
@@ -23,58 +23,37 @@ import sys
 import time
 from pathlib import Path
 
-import mujoco
 import numpy as np
 from PIL import Image
 
-from phase3.scene import INSPECT_PAD, PART_SIZE, build_cell
+from phase3.dataset import DefectRenderer, make_sample
+from phase3.scene import build_cell
 
 OUT = Path("outputs/phase3/anomalib_smoke")
-CROP = 128
-DEFECTS = ("wrong_colour", "oversize", "extra_hole")
+DEFECTS = ("wrong_colour", "deformed_size", "missing_hole")
 
 
 def render_dataset(root: Path, n_train: int, n_test: int, seed: int) -> dict[str, int]:
-    rng = np.random.default_rng(seed)
+    """Render with the milestone-2 generator (inspect camera, nominal randomisation)."""
     cell = build_cell()
-    model = cell.model
-    gid = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_GEOM, "part_geom")
-    hole = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_GEOM, "part_hole")
-    base_rgba = model.geom_rgba[gid].copy()
-    base_size = model.geom_size[gid].copy()
+    renderer = DefectRenderer(cell)
     counts: dict[str, int] = {}
 
-    def shot(path: Path, defect: str | None) -> None:
-        model.geom_rgba[gid] = base_rgba
-        model.geom_size[gid] = base_size
-        model.geom_rgba[hole, 3] = 0.0
-        if defect == "wrong_colour":
-            model.geom_rgba[gid, :3] = (0.80, 0.45, 0.20)
-        elif defect == "oversize":
-            model.geom_size[gid, :2] = base_size[:2] * 1.35
-        elif defect == "extra_hole":
-            model.geom_rgba[hole, 3] = 1.0
-        jitter = rng.normal(0.0, 0.004, size=2)
-        cell.set_part_pose((INSPECT_PAD[0] + jitter[0], INSPECT_PAD[1] + jitter[1]),
-                           yaw=float(rng.uniform(-0.3, 0.3)))
-        img = cell.render("overhead", 320, 240)
-        cy, cx = img.shape[0] // 2, img.shape[1] // 2
-        crop = img[cy - CROP // 2:cy + CROP // 2, cx - CROP // 2:cx + CROP // 2]
-        # mild sensor noise so the model does not key on perfectly identical pixels
-        crop = np.clip(crop.astype(np.int16) + rng.normal(0, 2.0, crop.shape).astype(np.int16), 0, 255)
+    def shot(folder: str, name: str, split: str, index: int, defect: str) -> None:
+        _, image, _ = make_sample(renderer, split, index, defect, seed, None)
+        path = root / folder / f"{name}.png"
         path.parent.mkdir(parents=True, exist_ok=True)
-        Image.fromarray(crop.astype(np.uint8)).save(path)
-        counts[str(path.parent.relative_to(root))] = counts.get(str(path.parent.relative_to(root)), 0) + 1
+        Image.fromarray(image).save(path)
+        counts[folder] = counts.get(folder, 0) + 1
 
     for i in range(n_train):
-        shot(root / "train_good" / f"{i:03d}.png", None)
+        shot("train_good", f"{i:03d}", "train", i, "none")
     for i in range(n_test):
-        shot(root / "test_good" / f"{i:03d}.png", None)
-    for d in DEFECTS:
+        shot("test_good", f"{i:03d}", "test", i, "none")
+    for k, d in enumerate(DEFECTS):
         for i in range(max(1, n_test // len(DEFECTS))):
-            shot(root / "test_defect" / f"{d}_{i:03d}.png", d)
+            shot("test_defect", f"{d}_{i:03d}", "test", 1000 + 100 * k + i, d)
     cell.close()
-    _ = PART_SIZE
     return counts
 
 
