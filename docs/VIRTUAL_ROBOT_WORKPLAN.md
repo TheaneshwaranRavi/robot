@@ -1,6 +1,6 @@
 # Virtual Robot Workplan
 
-Status: **proposal — awaiting approval before any code is written**
+Status: **implemented — see README 'Virtual robot'**
 Prepared: 2026-11-09
 Branch: `TheaneshwaranRavi/virtual-robot-sim` (Orca workspace `virtual-robot-sim`)
 
@@ -33,7 +33,7 @@ Give this repository a simulated robot that runs on an Apple Silicon Mac with no
 
 - Python 3.12 and the existing Docker-first workflow. No host virtualenv is required, although native macOS runs are supported for viewing.
 - MuJoCo (Apache-2.0) is the physics engine. Isaac Sim and Isaac Lab cannot run on this Mac (see `docs/NVIDIA_PLAN.md`), so this simulator is a stand-in for local development, not a replacement for Isaac Lab training.
-- Assumption: the GR00T N1.7 `PolicyServer` `get_action` request and response format will be **checked against the pinned NVIDIA/Isaac-GR00T release**, not guessed. Until then, the `groot` backend is tested only against an in-process fake server, which the existing tests already use.
+- Resolved: the GR00T N1.7 `PolicyServer` `get_action` request and response format was checked against NVIDIA/Isaac-GR00T commit `7aa0bca` and is written down in [`docs/GROOT_PROTOCOL.md`](GROOT_PROTOCOL.md). The `groot` backend is still tested only against an in-process fake server, not a live GR00T server.
 
 ## 2. High-level design
 
@@ -65,7 +65,7 @@ Give this repository a simulated robot that runs on an Apple Silicon Mac with no
 | `sim/env.py` — `SimEnv` | Loads the model, `reset(seed)`, `observe() -> dict`, `apply(action)`, `step()`. It owns physics substeps (timestep 2 ms, so about 17 substeps per 30 Hz control step) and offscreen rendering. |
 | `sim/policies/base.py` — `Policy` | `reset(task: str)` and `act(obs) -> np.ndarray[H, 7]`. One interface for both backends. |
 | `sim/policies/scripted.py` | A waypoint state machine (pre-grasp → descend → close → lift → hold). Joint deltas come from damped-least-squares IK on MuJoCo's site Jacobian, so it emits the same `arm_joint_delta` actions a learned policy would. |
-| `sim/policies/groot.py` | Packs observations into the GR00T request, sends it over the existing ZeroMQ REQ pattern (shared helper moved out of `examples/groot_ping.py`), validates the response's shape and dtype. |
+| `sim/policies/groot.py` | Packs observations into the GR00T request, sends it over its own small ZeroMQ REQ client (`examples/groot_ping.py` is unchanged), validates the response's shape and dtype. |
 | `sim/safety.py` | `clamp(action, limits)`, a `Watchdog` (finite check plus deadline), joint-position soft limits. Has no MuJoCo dependency, so it is unit-testable in the light client image too. |
 | `sim/recorder.py` | Frames → mp4 via ffmpeg when available, otherwise GIF via Pillow. Writes `summary.json` (seed, steps, success, stop reason, timing). |
 | `sim/run.py` | CLI: `--policy scripted|groot`, `--config`, `--seed`, `--steps`, `--realtime`, `--out`, `--no-record`. Exit codes: 0 = success, 1 = task failed, 2 = config error, 3 = safety stop. |
@@ -83,7 +83,7 @@ Observation dict, keyed by config names:
 
 Action chunk: `(action_horizon=16, 7) float32` = 6 × `arm_joint_delta` (±0.05 rad per step) followed by 1 × `gripper_command` (0..1). The runner executes the first `execute_k` steps of each chunk (default 8, receding horizon), then asks the policy again.
 
-Mapping to GR00T: the `groot` backend adapts these keys to the server's naming (expected to be `video.*`, `state.*`, `annotation.*`, `action.*` with batch/time axes). The adapter lives in one function, so a format change touches one place. It must be confirmed in Phase 4 (see §1.3).
+Mapping to GR00T: the `groot` backend adapts these keys to the server's `video`, `state` and `language` groups with batch and time axes. The adapter lives in one function (`build_observation`), so a format change touches one place. The confirmed format is in [`docs/GROOT_PROTOCOL.md`](GROOT_PROTOCOL.md).
 
 ### 2.3 Config changes (extend, never loosen)
 
@@ -101,7 +101,7 @@ Two interlocks follow from this:
 
 | Item | Decision |
 | --- | --- |
-| Images | Keep the current `Dockerfile` (light client) unchanged. Add `Dockerfile.sim` on the same `python:3.12-slim` base, plus `libosmesa6` and `ffmpeg` apt packages. |
+| Images | Keep the light client `Dockerfile` free of simulation dependencies; the only change is that it now also copies `sim/`, so the stdlib-only sim tests (config + safety) run there. Add `Dockerfile.sim` on the same `python:3.12-slim` base, plus `libosmesa6` and `ffmpeg` apt packages. |
 | Dependencies | `requirements.txt` stays client-only. A new `requirements-sim.txt` pins `mujoco`, `numpy` and `Pillow`, includes `-r requirements.txt`, and uses exact versions only. |
 | Rendering | `MUJOCO_GL=osmesa` in Docker (software, no GPU). Native macOS uses MuJoCo's default (CGL). |
 | Compose | Adds `sim` (runner, mounts `./outputs`) and `sim-tests`. The existing `groot-client` and `tests` services are unchanged. |
@@ -114,11 +114,14 @@ Two interlocks follow from this:
 reset(seed) → for t in range(steps):
     if chunk exhausted: chunk = clamp(policy.act(obs))      # watchdog: policy deadline
     a = chunk[i]; watchdog.check_finite(a)
-    target_q = clip(q + a[:6], joint_limits); gripper = a[6]
+    target_q = targets + a[:6]; gripper = a[6]                # deltas add to the current targets
+    target_q = clamp(target_q, joint_limits, within 0.25 rad of measured q)
     env.apply(target_q, gripper); env.step(substeps)          # watchdog: step deadline
     obs = env.observe(); recorder.add(obs.front_camera)
-    if success(): break
+    if success(): keep going for --hold-steps more steps, then break
 ```
+
+Joint deltas are added to the current joint *targets*, not to the measured position, so a slow joint does not lose commanded motion. The new targets are then clamped to the joint limits and to within 0.25 rad of the measured position.
 
 - **Offline mode (default):** physics runs as fast as the CPU allows. The deadline applies only to `policy.act` (default 1 s scripted, `GROOT_TIMEOUT_MS` for remote).
 - **`--realtime`:** each control step must finish within `1/control_hz`. Three consecutive misses trigger a safety stop. This is what future hardware will need.
@@ -142,7 +145,7 @@ Each run writes `outputs/<timestamp>-<seed>/summary.json` and the video, and pri
 
 | Layer | Test | Image |
 | --- | --- | --- |
-| Unit | Clamp keeps out-of-range, NaN and inf values in bounds; NaN triggers the watchdog | client (`tests`) |
+| Unit | Clamp keeps out-of-range, NaN and inf values in bounds; NaN triggers the watchdog | client (`tests`; the client image now copies `sim/` so these run there) |
 | Unit | Validator accepts `embodiment.sim.json`, rejects a bad `target`, and the existing config still validates | client |
 | Unit | `groot` backend refuses a placeholder config | client |
 | Integration | Scripted policy, seeds 0–4: cube lifted within 300 steps, deterministic across two runs | sim (`sim-tests`) |
@@ -193,8 +196,8 @@ Critical path: 0 → 1 → 3. Phase 2 can be done alongside Phase 1, and Phase 4
 - **Isaac Lab port:** reuse the same embodiment config and `Policy` interface. Only `SimEnv` changes.
 - **Real hardware:** a `HardwareEnv` with the same interface, plus e-stop, calibration and controller watchdogs, which this plan deliberately leaves out.
 
-## 9. Open questions for approval
+## 9. Open questions and the defaults taken
 
-1. Is a generic 6-DoF arm fine, or do you want a specific robot (e.g. a Franka or SO-100 model from Menagerie)?
-2. Is pick-and-place of one cube the right first task?
-3. Should Phase 4 (GR00T backend) be in this first pass, or deferred until a GPU host is available?
+1. **Which robot?** A generic hand-written 6-DoF arm with a parallel gripper, no Menagerie model.
+2. **First task?** Pick-and-place of one cube (lift and hold).
+3. **GR00T backend in this pass?** Yes. It is built and tested against an in-process fake server only; no live GR00T server has been used.

@@ -33,7 +33,6 @@ def run_episode(env, policy, limits: ActionLimits, watchdog: Watchdog, *, seed: 
     After success the loop keeps going for `hold_steps` (still policy-driven) so videos show the
     cube being held, then stops."""
     obs = env.reset(seed) if render_obs else (env.reset(seed), env.observe(render=False))[1]
-    policy.reset(env.task)
     period = 1.0 / env.control_hz
     camera = env.cameras[0][0]
     summary: dict[str, Any] = {
@@ -45,6 +44,7 @@ def run_episode(env, policy, limits: ActionLimits, watchdog: Watchdog, *, seed: 
     streak = 0
     started = time.monotonic()
     try:
+        policy.reset(env.task)  # inside the handler: a silent server here is a safety stop too
         for step in range(steps):
             tick = time.monotonic()
             if chunk is None or index >= min(execute_k, len(chunk)):
