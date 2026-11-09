@@ -51,6 +51,8 @@ Expected output starts with `GR00T PolicyServer is healthy`.
 
 ## Virtual robot
 
+![Scripted policy picking up the cube: start, grasp, lift, hold](docs/media/virtual_robot_pick.png)
+
 A simulated tabletop robot you can run on an Apple Silicon Mac with no GPU and no hardware: a MuJoCo 6-DoF arm with a parallel-jaw gripper, a table, one cube and one fixed camera. It runs on CPU only. The runner `python -m sim.run` closes the loop: observe, ask a policy for an action chunk, clamp, apply, step physics, record. It uses [`config/embodiment.sim.json`](config/embodiment.sim.json) and writes a video and a JSON summary for each episode.
 
 Two policy backends share one interface:
