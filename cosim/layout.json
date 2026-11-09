@@ -1,0 +1,49 @@
+{
+  "_comment": "Factory cell layout, shared by all processes. Units: metres, radians. World frame: x right, y up (top-down), z up. Floor at z = 0. Rectangles are axis-aligned: center [x, y], size [sx, sy] (full lengths), height h.",
+  "floor": {"size": [12.0, 8.0]},
+  "walls": [
+    {"name": "wall_south", "center": [6.0, -0.05], "size": [12.2, 0.1], "h": 1.0},
+    {"name": "wall_north", "center": [6.0, 8.05], "size": [12.2, 0.1], "h": 1.0},
+    {"name": "wall_west", "center": [-0.05, 4.0], "size": [0.1, 8.0], "h": 1.0},
+    {"name": "wall_east", "center": [12.05, 4.0], "size": [0.1, 8.0], "h": 1.0}
+  ],
+  "obstacles": [
+    {"name": "rack_1", "center": [5.0, 6.0], "size": [3.0, 0.6], "h": 1.8},
+    {"name": "rack_2", "center": [5.0, 2.0], "size": [3.0, 0.6], "h": 1.8},
+    {"name": "rack_3", "center": [8.0, 4.0], "size": [0.6, 2.4], "h": 1.8},
+    {"name": "arm_fence_west", "center": [1.0, 4.4], "size": [0.05, 1.6], "h": 1.2},
+    {"name": "arm_fence_north", "center": [2.0, 5.2], "size": [2.0, 0.05], "h": 1.2},
+    {"name": "arm_fence_east", "center": [3.0, 4.4], "size": [0.05, 1.6], "h": 1.2},
+    {"name": "arm_pedestal", "center": [2.0, 4.0], "size": [0.4, 0.4], "h": 0.3},
+    {"name": "drop_table", "center": [10.8, 6.9], "size": [0.8, 0.6], "h": 0.3}
+  ],
+  "arm": {
+    "_comment": "Same 6-DoF arm as sim/assets/arm_table.xml, mounted on the pedestal top. Base yaw 0 points along world -y (toward the load station).",
+    "base": [2.0, 4.0, 0.3],
+    "mount_yaw": -1.5707963267948966,
+    "joint_names": ["j1_base_yaw", "j2_shoulder", "j3_elbow", "j4_forearm_roll", "j5_wrist_pitch", "j6_tool_roll"],
+    "teach_points": {
+      "_comment": "Filled in by cosim/tools/teach.py (offline programming). Joint angles in rad.",
+      "home": [0.0, 0.0, 0.6, 0.0, 1.2, 0.0],
+      "above_load": [0.0, 0.987292, 0.534437, 0.0, 1.619864, 0.0],
+      "place_load": [0.0, 1.085755, 0.80681, 0.0, 1.249028, 0.0]
+    }
+  },
+  "amr": {
+    "_comment": "Differential-drive AMR. Footprint is a box; deck top at z = 0.3 (same height as the pedestal top).",
+    "footprint": [0.6, 0.45],
+    "deck_height": 0.3,
+    "max_v": 0.6,
+    "max_w": 1.2,
+    "start": [10.0, 1.2, 1.5707963267948966]
+  },
+  "stations": {
+    "_comment": "Docking poses [x, y, yaw] for the AMR centre. LOAD puts the deck centre 0.55 m from the arm base along -y.",
+    "LOAD": [2.0, 3.45, 0.0],
+    "DROP": [10.8, 6.1, 1.5707963267948966],
+    "HOME": [10.0, 1.2, 1.5707963267948966]
+  },
+  "lidar": {"height": 0.2, "beams": 271, "fov": 4.71238898038469, "range_max": 8.0, "noise_std": 0.01, "rate_hz": 10},
+  "odom": {"rate_hz": 50, "v_noise_std": 0.02, "w_noise_std": 0.03, "v_scale_error": 1.03, "w_scale_error": 0.97},
+  "crate": {"size": [0.3, 0.25, 0.2]}
+}
